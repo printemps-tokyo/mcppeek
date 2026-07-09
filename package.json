@@ -1,0 +1,52 @@
+{
+  "name": "@printemps-tokyo/mcppeek",
+  "version": "0.1.0",
+  "description": "Inspect a Model Context Protocol (MCP) server: list its tools, resources, and prompts, lint their schemas, and call a tool. Zero-dependency CLI.",
+  "type": "module",
+  "license": "MIT",
+  "author": "printemps.tokyo <develop@printemps.tokyo>",
+  "homepage": "https://github.com/printemps-tokyo/mcppeek#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/printemps-tokyo/mcppeek.git"
+  },
+  "bugs": {
+    "url": "https://github.com/printemps-tokyo/mcppeek/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "json-rpc",
+    "llm",
+    "ai",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "mcppeek": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^2.0.0"
+  }
+}
