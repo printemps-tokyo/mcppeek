@@ -64,6 +64,22 @@ describe("parseHeaderFlags", () => {
       expect(() => parseHeaderFlags([bad])).toThrow(/--header must look like "Name: value"/);
     }
   });
+
+  it("rejects control characters in the value instead of failing later in node:http", () => {
+    for (const bad of ["X-A: a\r\nX-Injected: b", "X-A: a\nb", "X-A: a\rb", "X-A: a\tb", "X-A: a\x00b", "X-A: a\x7fb"]) {
+      expect(() => parseHeaderFlags([bad])).toThrow(/control character/);
+    }
+  });
+
+  it("rejects names with control characters or outside the RFC 7230 token charset", () => {
+    for (const bad of ["X\x00A: v", "X A: v", "X-Ä: v", "X-(a): v", "X@A: v", 'X-"A": v']) {
+      expect(() => parseHeaderFlags([bad])).toThrow(/not allowed in a header name/);
+    }
+  });
+
+  it("still accepts token-charset names and printable values", () => {
+    expect(parseHeaderFlags(["X-Custom_Header.1: a b c!"])).toEqual({ "X-Custom_Header.1": "a b c!" });
+  });
 });
 
 describe("toolResultIsError", () => {
