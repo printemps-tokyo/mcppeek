@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeRequest, encodeLine, parseMessage, unwrap, RpcError } from "../src/jsonrpc.js";
 import { parseSseEvents } from "../src/sse.js";
 import { lintTool, lintPrompt, lintAll } from "../src/lint.js";
-import { parseTimeout, toolResultIsError } from "../src/options.js";
+import { parseHeaderFlags, parseTimeout, toolResultIsError } from "../src/options.js";
 import type { Tool } from "../src/mcp.js";
 
 describe("jsonrpc", () => {
@@ -43,6 +43,25 @@ describe("parseTimeout", () => {
   it("rejects values that are not a positive number of milliseconds", () => {
     for (const bad of ["20s", "abc", "", "  ", "NaN", "-1", "0", "Infinity"]) {
       expect(() => parseTimeout(bad)).toThrow(/--timeout must be a positive number/);
+    }
+  });
+});
+
+describe("parseHeaderFlags", () => {
+  it("parses curl-style Name: value pairs, trimming whitespace", () => {
+    expect(parseHeaderFlags([])).toEqual({});
+    expect(parseHeaderFlags(["Authorization: Bearer abc"])).toEqual({ Authorization: "Bearer abc" });
+    expect(parseHeaderFlags(["X-A:1", "X-B:  2  "])).toEqual({ "X-A": "1", "X-B": "2" });
+  });
+
+  it("keeps colons inside the value and lets a later flag overwrite an earlier one", () => {
+    expect(parseHeaderFlags(["X-Url: https://example.com/mcp"])).toEqual({ "X-Url": "https://example.com/mcp" });
+    expect(parseHeaderFlags(["X-A: 1", "X-A: 2"])).toEqual({ "X-A": "2" });
+  });
+
+  it("rejects a flag without a colon or with an empty name", () => {
+    for (const bad of ["Authorization Bearer abc", "", ": value", "   : value"]) {
+      expect(() => parseHeaderFlags([bad])).toThrow(/--header must look like "Name: value"/);
     }
   });
 });

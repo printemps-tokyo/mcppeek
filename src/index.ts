@@ -40,7 +40,7 @@ export { StdioTransport } from "./transport-stdio.js";
 export { HttpTransport } from "./transport-http.js";
 export type { Transport } from "./transport.js";
 
-export { parseTimeout, toolResultIsError } from "./options.js";
+export { parseHeaderFlags, parseTimeout, toolResultIsError } from "./options.js";
 
 export { inspect } from "./inspect.js";
 export type { Inspection } from "./inspect.js";

@@ -14,6 +14,24 @@ export function parseTimeout(raw: string | undefined): number | undefined {
   return n;
 }
 
+/**
+ * Parse repeated --header flags of the form "Name: value" (curl style) into
+ * a header record. Throws on a flag without a colon or with an empty name.
+ * Later flags overwrite earlier ones with the same name.
+ */
+export function parseHeaderFlags(flags: readonly string[]): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const flag of flags) {
+    const idx = flag.indexOf(":");
+    const name = idx === -1 ? "" : flag.slice(0, idx).trim();
+    if (name === "") {
+      throw new Error(`--header must look like "Name: value", got "${flag}"`);
+    }
+    headers[name] = flag.slice(idx + 1).trim();
+  }
+  return headers;
+}
+
 /** True when a tools/call result carries the MCP `isError: true` marker. */
 export function toolResultIsError(result: unknown): boolean {
   return typeof result === "object" && result !== null && (result as { isError?: unknown }).isError === true;

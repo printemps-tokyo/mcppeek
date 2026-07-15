@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { McpClient } from "./client.js";
 import { inspect } from "./inspect.js";
 import { hasErrors } from "./issue.js";
-import { parseTimeout, toolResultIsError } from "./options.js";
+import { parseHeaderFlags, parseTimeout, toolResultIsError } from "./options.js";
 import { renderJson, renderText, renderToolResult } from "./render.js";
 import { StdioTransport } from "./transport-stdio.js";
 import { HttpTransport } from "./transport-http.js";
@@ -21,6 +21,7 @@ With --call it invokes one tool and prints the result.
 
 Options:
   --url <endpoint>    Inspect an HTTP MCP endpoint instead of a stdio command
+  --header <h>        Extra HTTP header as "Name: value" for --url (repeatable)
   --call <tool>       Call this tool instead of listing
   --args <json>       JSON object of arguments for --call (default: {})
   --lint-only         Print only the lint findings
@@ -37,6 +38,7 @@ With --call the exit code is 2 when the tool result reports isError.
 Examples:
   mcppeek -- npx -y @modelcontextprotocol/server-everything
   mcppeek --url https://example.com/mcp
+  mcppeek --url https://example.com/mcp --header "Authorization: Bearer TOKEN"
   mcppeek --call add --args '{"a":2,"b":3}' -- node my-server.js
 `;
 
@@ -79,6 +81,7 @@ async function main(): Promise<number> {
       allowPositionals: false,
       options: {
         url: { type: "string" },
+        header: { type: "string", multiple: true },
         call: { type: "string" },
         args: { type: "string" },
         "lint-only": { type: "boolean", default: false },
@@ -93,8 +96,10 @@ async function main(): Promise<number> {
   }
 
   let timeoutMs: number | undefined;
+  let headers: Record<string, string>;
   try {
     timeoutMs = parseTimeout(values.timeout);
+    headers = parseHeaderFlags(values.header ?? []);
   } catch (err) {
     process.stderr.write(`error: ${(err as Error).message}\n`);
     return 1;
@@ -102,7 +107,7 @@ async function main(): Promise<number> {
 
   let transport: Transport;
   if (values.url) {
-    transport = new HttpTransport({ url: values.url, timeoutMs });
+    transport = new HttpTransport({ url: values.url, headers, timeoutMs });
   } else if (command.length > 0) {
     transport = new StdioTransport({ command: command[0]!, args: command.slice(1), timeoutMs });
   } else {

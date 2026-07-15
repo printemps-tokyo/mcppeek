@@ -59,6 +59,7 @@ Everything after `--` is the command mcppeek launches over stdio:
 ```bash
 mcppeek -- npx -y @modelcontextprotocol/server-everything   # inspect a stdio server
 mcppeek --url https://example.com/mcp                       # inspect an HTTP server
+mcppeek --url https://example.com/mcp --header "Authorization: Bearer TOKEN"
 mcppeek --lint-only -- node my-server.js                    # just the schema findings
 mcppeek --call get-sum --args '{"a":2,"b":3}' -- node my-server.js
 mcppeek --json -- node my-server.js                         # machine-readable
@@ -68,6 +69,7 @@ mcppeek --json -- node my-server.js                         # machine-readable
 | --- | --- |
 | `-- <command> [args...]` | Launch this command as a stdio MCP server and inspect it |
 | `--url <endpoint>` | Inspect a Streamable HTTP MCP endpoint instead |
+| `--header "Name: value"` | Extra HTTP header for `--url`, e.g. `Authorization` (repeatable) |
 | `--call <tool>` | Call this tool and print the result, instead of listing |
 | `--args <json>` | JSON object of arguments for `--call` (default: `{}`) |
 | `--lint-only` | Print only the lint findings |
@@ -100,7 +102,8 @@ With `--call`, the exit code is `2` when the tool result reports `isError`.
   the default and the most common way to run a local MCP server.
 - **Streamable HTTP** (`--url`) — mcppeek POSTs JSON-RPC to the endpoint and
   reads either a JSON or an SSE response, carrying the `Mcp-Session-Id` across
-  requests.
+  requests. Auth-gated endpoints work with repeated `--header` flags, which are
+  sent on every request.
 
 ## Programmatic API
 

@@ -119,7 +119,11 @@ export class HttpTransport implements Transport {
           url,
           {
             method: "DELETE",
-            headers: { "mcp-session-id": this.sessionId!, "mcp-protocol-version": this.negotiatedVersion ?? PROTOCOL_VERSION },
+            headers: {
+              ...this.options.headers,
+              "mcp-session-id": this.sessionId!,
+              "mcp-protocol-version": this.negotiatedVersion ?? PROTOCOL_VERSION,
+            },
             timeout: 2000,
           },
           (res) => {
