@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeRequest, encodeLine, parseMessage, unwrap, RpcError } from "../src/jsonrpc.js";
 import { parseSseEvents } from "../src/sse.js";
 import { lintTool, lintPrompt, lintAll } from "../src/lint.js";
+import { parseTimeout, toolResultIsError } from "../src/options.js";
 import type { Tool } from "../src/mcp.js";
 
 describe("jsonrpc", () => {
@@ -30,6 +31,30 @@ describe("parseSseEvents", () => {
   it("extracts data payloads, joining multi-line data and ignoring comments", () => {
     const body = ": keep-alive\r\nevent: message\r\ndata: {\"a\":1}\r\n\r\ndata: line1\r\ndata: line2\r\n\r\n";
     expect(parseSseEvents(body)).toEqual(['{"a":1}', "line1\nline2"]);
+  });
+});
+
+describe("parseTimeout", () => {
+  it("returns undefined when the flag is absent and the number otherwise", () => {
+    expect(parseTimeout(undefined)).toBeUndefined();
+    expect(parseTimeout("5000")).toBe(5000);
+  });
+
+  it("rejects values that are not a positive number of milliseconds", () => {
+    for (const bad of ["20s", "abc", "", "  ", "NaN", "-1", "0", "Infinity"]) {
+      expect(() => parseTimeout(bad)).toThrow(/--timeout must be a positive number/);
+    }
+  });
+});
+
+describe("toolResultIsError", () => {
+  it("is true only for a result object with isError: true", () => {
+    expect(toolResultIsError({ isError: true, content: [] })).toBe(true);
+    expect(toolResultIsError({ isError: false, content: [] })).toBe(false);
+    expect(toolResultIsError({ content: [{ type: "text", text: "ok" }] })).toBe(false);
+    expect(toolResultIsError({ isError: "yes" })).toBe(false);
+    expect(toolResultIsError(null)).toBe(false);
+    expect(toolResultIsError(undefined)).toBe(false);
   });
 });
 

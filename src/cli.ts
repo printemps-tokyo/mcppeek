@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { McpClient } from "./client.js";
 import { inspect } from "./inspect.js";
 import { hasErrors } from "./issue.js";
+import { parseTimeout, toolResultIsError } from "./options.js";
 import { renderJson, renderText, renderToolResult } from "./render.js";
 import { StdioTransport } from "./transport-stdio.js";
 import { HttpTransport } from "./transport-http.js";
@@ -31,6 +32,7 @@ Options:
 
 Everything after -- is the server command run over stdio. The exit code is 1
 when linting finds an error (a tool with no input schema, etc.), so it fits CI.
+With --call the exit code is 2 when the tool result reports isError.
 
 Examples:
   mcppeek -- npx -y @modelcontextprotocol/server-everything
@@ -90,7 +92,14 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const timeoutMs = values.timeout ? Number(values.timeout) : undefined;
+  let timeoutMs: number | undefined;
+  try {
+    timeoutMs = parseTimeout(values.timeout);
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return 1;
+  }
+
   let transport: Transport;
   if (values.url) {
     transport = new HttpTransport({ url: values.url, timeoutMs });
@@ -119,7 +128,7 @@ async function main(): Promise<number> {
       await client.initialize();
       const result = await client.callTool(values.call, callArgs);
       process.stdout.write(values.json ? JSON.stringify(result, null, 2) + "\n" : renderToolResult(result, color));
-      return 0;
+      return toolResultIsError(result) ? 2 : 0;
     }
 
     const inspection = await inspect(client);

@@ -77,6 +77,7 @@ mcppeek --json -- node my-server.js                         # machine-readable
 
 The exit code is `1` when linting finds an error (for example a tool with no
 input schema), so `mcppeek --lint-only` fits a CI check on your own server.
+With `--call`, the exit code is `2` when the tool result reports `isError`.
 
 ## What it does
 
