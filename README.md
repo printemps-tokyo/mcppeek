@@ -39,7 +39,7 @@ as a subprocess) and Streamable HTTP — using only Node's built-ins.
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js >= 22
 
 ## Install
 
