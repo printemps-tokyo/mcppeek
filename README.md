@@ -15,7 +15,7 @@ nothing).
 ```console
 $ mcppeek -- npx -y @modelcontextprotocol/server-everything
 Server: everything 2.0.0 (Everything Reference Server)
-Protocol: 2025-06-18
+Protocol: 2025-06-18 (initialize handshake)
 Capabilities: tools, prompts, resources, logging, completions
 
 Tools (13)
@@ -34,8 +34,9 @@ Lint (2)
   info  prompt "args-prompt": argument "state" has no description
 ```
 
-It speaks MCP `2025-06-18` over both transports — stdio (it launches the server
-as a subprocess) and Streamable HTTP — using only Node's built-ins.
+It speaks both eras of MCP — the stateless `2026-07-28` revision and the
+`2025-06-18` initialize handshake — over both transports, stdio (it launches
+the server as a subprocess) and Streamable HTTP, using only Node's built-ins.
 
 ## Requirements
 
@@ -63,6 +64,8 @@ mcppeek --url https://example.com/mcp --header "Authorization: Bearer TOKEN"
 mcppeek --lint-only -- node my-server.js                    # just the schema findings
 mcppeek --call get-sum --args '{"a":2,"b":3}' -- node my-server.js
 mcppeek --json -- node my-server.js                         # machine-readable
+mcppeek --record s.jsonl --call search --args '{"q":"x"}' -- node my-server.js
+mcppeek --replay s.jsonl -- node my-server.js               # same results as before?
 ```
 
 | Option | Description |
@@ -74,12 +77,45 @@ mcppeek --json -- node my-server.js                         # machine-readable
 | `--args <json>` | JSON object of arguments for `--call` (default: `{}`) |
 | `--lint-only` | Print only the lint findings |
 | `--timeout <ms>` | Per-request timeout (default: 20000) |
+| `--legacy` | Skip `server/discover`; use the initialize handshake straight away |
+| `--record <file>` | Write every JSON-RPC message sent and received to `file` (JSON lines) |
+| `--replay <file>` | Make the `tools/call` requests of a recording again and report changed results |
 | `--json` | Output JSON instead of text |
 | `--no-color` | Disable ANSI colors |
 
 The exit code is `1` when linting finds an error (for example a tool with no
 input schema), so `mcppeek --lint-only` fits a CI check on your own server.
 With `--call`, the exit code is `2` when the tool result reports `isError`.
+
+### Stateless servers (2026-07-28)
+
+The 2026-07-28 revision removed the `initialize` handshake and the protocol
+session: every request carries the protocol version and client details in
+`_meta`, and a server reports itself through `server/discover`. mcppeek first
+sends `server/discover` with `2026-07-28`, as the specification recommends for
+clients that support both eras. A result listing `supportedVersions` means a
+stateless server: no handshake follows, every request carries the `_meta`, and
+over HTTP every request also carries `MCP-Protocol-Version` and `Mcp-Method`
+(and no `Mcp-Session-Id`). A server that answers with "unsupported protocol
+version" (`-32022`) is reported with the versions it supports. Any other error,
+or no answer within `--timeout`, means an older server, which gets the
+initialize handshake; the inspection then notes that it does not answer
+`server/discover`. A stdio server that stays silent on methods it does not know
+costs one `--timeout` before that; `--legacy` skips the probe.
+
+### Recording and replaying tool calls
+
+`--record s.jsonl` writes every JSON-RPC message of the run, one JSON object per
+line (`{ at, dir: "send" | "receive", message }`), to a file readable only by
+you. `--replay s.jsonl` reads a recording, makes each recorded `tools/call`
+again with the same arguments on the server you point it at, and compares the
+new result with the recorded one (object keys in any order, `_meta` ignored):
+`same`, or `CHANGED` with the first place that differs, such as
+`result.content[0].text`. The exit code is `1` when any result changed, so a
+recording made against a known-good build becomes a regression check. A
+recording holds whatever the tools returned (and any arguments you gave them);
+keep it as private as that data. HTTP headers, such as `Authorization`, are
+not recorded.
 
 ## What it does
 
@@ -102,7 +138,7 @@ With `--call`, the exit code is `2` when the tool result reports `isError`.
   the default and the most common way to run a local MCP server.
 - **Streamable HTTP** (`--url`) — mcppeek POSTs JSON-RPC to the endpoint and
   reads either a JSON or an SSE response, carrying the `Mcp-Session-Id` across
-  requests. Auth-gated endpoints work with repeated `--header` flags, which are
+  requests of an initialize-era server (the stateless revision has none). Auth-gated endpoints work with repeated `--header` flags, which are
   sent on every request.
 
 ## Programmatic API

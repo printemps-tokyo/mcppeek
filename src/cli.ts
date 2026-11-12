@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
+import { readFileSync } from "node:fs";
+import { RecordingTransport, firstDifference, recordedCalls } from "./record.js";
 import { McpClient } from "./client.js";
 import { inspect } from "./inspect.js";
 import { hasErrors } from "./issue.js";
@@ -15,7 +17,9 @@ Usage:
   mcppeek [options] -- <command> [args...]   Launch a stdio MCP server and inspect it
   mcppeek [options] --url <endpoint>         Inspect a Streamable HTTP MCP server
 
-Runs the MCP handshake, then lists the server's tools, resources, and prompts,
+Connects with the stateless 2026-07-28 protocol (server/discover) when the
+server speaks it, else with the initialize handshake, then lists the server's
+tools, resources, and prompts,
 and lints their schemas (missing descriptions, malformed input schemas, etc.).
 With --call it invokes one tool and prints the result.
 
@@ -25,6 +29,11 @@ Options:
   --call <tool>       Call this tool instead of listing
   --args <json>       JSON object of arguments for --call (default: {})
   --lint-only         Print only the lint findings
+  --legacy            Skip server/discover and use the initialize handshake
+                      (for a stdio server that stays silent on unknown methods)
+  --record <file>     Write every JSON-RPC message to <file> (JSON lines)
+  --replay <file>     Make the tools/call requests of a recording again and
+                      report which results changed (exit 1 if any did)
   --timeout <ms>      Per-request timeout (default: 20000)
   --json              Output JSON instead of text
   --no-color          Disable ANSI colors
@@ -88,6 +97,9 @@ async function main(): Promise<number> {
         timeout: { type: "string" },
         json: { type: "boolean", default: false },
         "no-color": { type: "boolean", default: false },
+        legacy: { type: "boolean", default: false },
+        record: { type: "string" },
+        replay: { type: "string" },
       },
     }).values;
   } catch (err) {
@@ -116,6 +128,28 @@ async function main(): Promise<number> {
     return 1;
   }
 
+  if (values.replay !== undefined && values.call !== undefined) {
+    process.stderr.write("error: use either --call or --replay\n");
+    return 1;
+  }
+  let replayText: string | undefined;
+  if (values.replay !== undefined) {
+    try {
+      replayText = readFileSync(values.replay, "utf8");
+    } catch (err) {
+      process.stderr.write(`error: cannot read ${values.replay}: ${(err as Error).message}\n`);
+      return 1;
+    }
+  }
+  if (values.record !== undefined) {
+    try {
+      transport = new RecordingTransport(transport, values.record);
+    } catch (err) {
+      process.stderr.write(`error: cannot write ${values.record}: ${(err as Error).message}\n`);
+      return 1;
+    }
+  }
+
   let callArgs: Record<string, unknown> = {};
   if (values.args) {
     try {
@@ -130,14 +164,43 @@ async function main(): Promise<number> {
   const client = new McpClient(transport);
 
   try {
+    const connect = { legacy: values.legacy };
+    if (replayText !== undefined) {
+      const calls = recordedCalls(replayText);
+      if (calls.length === 0) throw new Error(`no tools/call exchanges in ${values.replay}`);
+      await client.initialize(connect);
+      const report: { tool: string; same: boolean; difference?: string }[] = [];
+      for (const call of calls) {
+        let now: { result?: unknown; error?: { code: number; message: string } };
+        try {
+          now = { result: await client.callTool(call.tool, call.args) };
+        } catch (err) {
+          now = { error: { code: (err as { code?: number }).code ?? 0, message: (err as Error).message } };
+        }
+        const before = call.error ? { error: call.error.code } : { result: call.result };
+        const after = now.error ? { error: now.error.code } : { result: now.result };
+        const difference = firstDifference(before, after);
+        report.push({ tool: call.tool, same: difference === undefined, ...(difference ? { difference } : {}) });
+      }
+      if (values.json) {
+        process.stdout.write(JSON.stringify({ calls: report }, null, 2) + "\n");
+      } else {
+        for (const r of report) {
+          process.stdout.write(`${r.same ? "same   " : "CHANGED"}  ${r.tool}${r.difference ? `  (first difference: ${r.difference})` : ""}\n`);
+        }
+        const changed = report.filter((r) => !r.same).length;
+        process.stdout.write(`\n${report.length} call(s) replayed, ${changed} changed\n`);
+      }
+      return report.some((r) => !r.same) ? 1 : 0;
+    }
     if (values.call) {
-      await client.initialize();
+      await client.initialize(connect);
       const result = await client.callTool(values.call, callArgs);
       process.stdout.write(values.json ? JSON.stringify(result, null, 2) + "\n" : renderToolResult(result, color));
       return toolResultIsError(result) ? 2 : 0;
     }
 
-    const inspection = await inspect(client);
+    const inspection = await inspect(client, connect);
     if (values["lint-only"]) {
       process.stdout.write(values.json ? JSON.stringify(inspection.issues, null, 2) + "\n" : lintText(inspection.issues, color));
     } else {

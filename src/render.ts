@@ -31,7 +31,7 @@ export function renderText(ins: Inspection, color: boolean): string {
 
   const title = ins.server.title ? ` (${ins.server.title})` : "";
   lines.push(`${paint("Server:", "36", color)} ${ins.server.name} ${ins.server.version}${title}`);
-  lines.push(`${paint("Protocol:", "36", color)} ${ins.protocolVersion}`);
+  lines.push(`${paint("Protocol:", "36", color)} ${ins.protocolVersion}${ins.stateless ? " (stateless, server/discover)" : " (initialize handshake)"}`);
   const caps = Object.keys(ins.capabilities).filter((k) => ins.capabilities[k]);
   lines.push(`${paint("Capabilities:", "36", color)} ${caps.length ? caps.join(", ") : "(none)"}`);
   if (ins.instructions) lines.push(`${paint("Instructions:", "36", color)} ${ins.instructions.replace(/\s+/g, " ").trim()}`);

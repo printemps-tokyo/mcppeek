@@ -1,6 +1,6 @@
 {
   "name": "@printemps-tokyo/mcppeek",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Inspect a Model Context Protocol (MCP) server: list its tools, resources, and prompts, lint their schemas, and call a tool. Zero-dependency CLI.",
   "type": "module",
   "license": "MIT",

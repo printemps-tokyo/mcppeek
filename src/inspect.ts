@@ -1,10 +1,11 @@
 /** Drive a client through initialize + listing, then lint the definitions. */
-import { McpClient } from "./client.js";
+import { McpClient, type ConnectOptions } from "./client.js";
 import { RpcError, METHOD_NOT_FOUND } from "./jsonrpc.js";
 import { lintAll } from "./lint.js";
 import { issue, type Issue } from "./issue.js";
 import {
   PROTOCOL_VERSION,
+  STATELESS_VERSION,
   type Implementation,
   type Prompt,
   type Resource,
@@ -16,6 +17,8 @@ import {
 export interface Inspection {
   server: Implementation;
   protocolVersion: string;
+  /** True for the stateless 2026-07-28 protocol, false for initialize. */
+  stateless: boolean;
   instructions?: string;
   capabilities: ServerCapabilities;
   tools: Tool[];
@@ -37,14 +40,23 @@ async function optional<T>(label: string, fn: () => Promise<T[]>, issues: Issue[
 }
 
 /** Initialize the server and gather everything it advertises. */
-export async function inspect(client: McpClient): Promise<Inspection> {
-  const init = await client.initialize();
+export async function inspect(client: McpClient, opts: ConnectOptions = {}): Promise<Inspection> {
+  const init = await client.initialize(opts);
   const caps = init.capabilities ?? {};
   const issues: Issue[] = [];
 
-  if (init.protocolVersion !== PROTOCOL_VERSION) {
+  if (!init.stateless && init.protocolVersion !== PROTOCOL_VERSION) {
     issues.push(
       issue("info", "server", `speaks protocol ${init.protocolVersion} (mcppeek offered ${PROTOCOL_VERSION})`),
+    );
+  }
+  if (!init.stateless && !opts.legacy) {
+    issues.push(
+      issue(
+        "info",
+        "server",
+        `uses the initialize handshake; it does not answer server/discover of the stateless ${STATELESS_VERSION} revision`,
+      ),
     );
   }
 
@@ -64,6 +76,7 @@ export async function inspect(client: McpClient): Promise<Inspection> {
   return {
     server: init.serverInfo,
     protocolVersion: init.protocolVersion,
+    stateless: init.stateless === true,
     instructions: init.instructions,
     capabilities: caps,
     tools,

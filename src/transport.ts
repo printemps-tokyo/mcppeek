@@ -10,4 +10,10 @@ export interface Transport {
   sendNotification(message: JsonRpcNotification): Promise<void>;
   /** Tear down the connection. */
   close(): Promise<void>;
+  /**
+   * Switch to the stateless protocol: the HTTP transport then sends the
+   * MCP-Protocol-Version and Mcp-Method headers on every request and no
+   * session id. Optional; stdio needs nothing.
+   */
+  useStateless?(version: string): void;
 }

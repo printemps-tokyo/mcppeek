@@ -1,5 +1,6 @@
 /**
- * The Streamable HTTP MCP transport (2025-06-18): each client message is an
+ * The Streamable HTTP MCP transport (2025-06-18, and the stateless 2026-07-28
+ * form with its per-request headers): each client message is an
  * HTTP POST to the MCP endpoint. The server answers a request with either one
  * `application/json` object or a `text/event-stream` (SSE) that carries the
  * response. A session id from the initialize response is echoed on later posts.
@@ -27,6 +28,7 @@ interface RawResponse {
 export class HttpTransport implements Transport {
   private sessionId: string | undefined;
   private negotiatedVersion: string | undefined;
+  private stateless = false;
   private readonly timeoutMs: number;
 
   constructor(private readonly options: HttpOptions) {
@@ -37,7 +39,13 @@ export class HttpTransport implements Transport {
     return Promise.resolve();
   }
 
-  private post(payload: string): Promise<RawResponse> {
+  useStateless(version: string): void {
+    this.stateless = true;
+    this.negotiatedVersion = version;
+    this.sessionId = undefined;
+  }
+
+  private post(payload: string, method?: string): Promise<RawResponse> {
     const url = new URL(this.options.url);
     const isHttps = url.protocol === "https:";
     const requestFn = isHttps ? httpsRequest : httpRequest;
@@ -47,8 +55,11 @@ export class HttpTransport implements Transport {
       "content-length": String(Buffer.byteLength(payload)),
       ...this.options.headers,
     };
-    if (this.sessionId) headers["mcp-session-id"] = this.sessionId;
+    // The stateless revision has no session, and names the method in a
+    // header on every request (SEP-2243).
+    if (this.sessionId && !this.stateless) headers["mcp-session-id"] = this.sessionId;
     if (this.negotiatedVersion) headers["mcp-protocol-version"] = this.negotiatedVersion;
+    if (this.stateless && method) headers["mcp-method"] = method;
 
     return new Promise<RawResponse>((resolve, reject) => {
       const req = requestFn(
@@ -75,9 +86,15 @@ export class HttpTransport implements Transport {
   }
 
   async sendRequest(message: JsonRpcRequest): Promise<JsonRpcResponse> {
-    const res = await this.post(JSON.stringify(message));
-    if (res.sessionId) this.sessionId = res.sessionId;
+    const res = await this.post(JSON.stringify(message), message.method);
+    if (res.sessionId && !this.stateless) this.sessionId = res.sessionId;
     if (res.status >= 400) {
+      // A JSON-RPC error in the body (a stateless server rejecting
+      // server/discover, say) is the answer; anything else is a failure.
+      const parsed = res.body.trim().startsWith("{") ? parseMessage(res.body) : undefined;
+      if (parsed?.kind === "response" && parsed.message.id === message.id && parsed.message.error) {
+        return parsed.message;
+      }
       throw new Error(`server returned HTTP ${res.status}${res.body ? `: ${res.body.slice(0, 200)}` : ""}`);
     }
 
@@ -101,8 +118,8 @@ export class HttpTransport implements Transport {
   }
 
   async sendNotification(message: JsonRpcNotification): Promise<void> {
-    const res = await this.post(JSON.stringify(message));
-    if (res.sessionId) this.sessionId = res.sessionId;
+    const res = await this.post(JSON.stringify(message), message.method);
+    if (res.sessionId && !this.stateless) this.sessionId = res.sessionId;
     if (res.status >= 400) {
       throw new Error(`server returned HTTP ${res.status} for ${message.method}`);
     }
